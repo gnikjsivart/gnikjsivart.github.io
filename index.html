@@ -65,7 +65,7 @@
     };
 
     const COSTS = {
-        tickRate:
+        tickRate: 1000,
         upgrade: 10,
         helper: 10,
         food: 1
@@ -109,7 +109,7 @@ const elements = {
     jackCount: document.getElementById("jackCount"),
     minLifeDisplay: document.getElementById("minLifeDisplay"),
     maxLifeDisplay: document.getElementById("maxLifeDisplay"),
-    statsContainer: document.getElementById("stats")
+    statsContainer: document.getElementById("stats"),
     workerType: document.getElementById("workerType")
 };
 
@@ -117,7 +117,7 @@ const elements = {
 const validateElements = () => {
     for (const [key, element] of Object.entries(elements)) {
         if(!element) {
-            console.error('DOM element not found: ${key}');
+            console.error(`DOM element not found: ${key}`);
         }
     }
 };
@@ -128,7 +128,7 @@ function updateUI() {
         elements.upgradeCount.textContent = gameState.upgradeLevel;
         elements.helpCount.textContent = gameState.help;
         elements.foodCount.textContent = gameState.food.toFixed(2);
-        elements.lumberCount.textContent = gameState.wood.toFixd(2);
+        elements.lumberCount.textContent = gameState.wood.toFixed(2);
         elements.farmCount.textContent = gameState.farm;
         elements.farmerCount.textContent = gameState.farmer;
         elements.jackCount.textContent = gameState.jack;
@@ -195,32 +195,36 @@ function resetGame () {
     updateUI();
 }
 
-function startPassiveGold() {
-    setInterval(() => {
-        gameState.gold += 1; // Increase gold by 1 per second
+function setupPassiveResource(resourceType, amount = 1) {
+    if (gameState.intervals.passive[resourceType]) {
+        clearInterval(gameState.intervals.passive[resourceType]);
+    }
+
+    gameState.intervals.passive[resourceType] = setInterval(() => {
+        let modifier = 1;
+
+        if (resourceType === 'food' && gameState.farmer > 0) {
+            modifier += 0.5 * gameState.farmer;
+        }
+
+        if (resourceType === 'wood' && gameState.jack > 0) {
+            modifier += 0.5 * gameState.jack;
+        }
+
+        gameState[resourceType] += amount * modifier;
         updateUI();
-    }, 1000); // Runs every second
+    }, CONFIG.tickRate);
 }
 
-startPassiveGold();
+function initGameSystems() {
+    setupPassiveResource('gold');
+    setupPassiveResource('food');
+    setupPassiveResource('wood');
 
-function startPassiveFood() {
-    setInterval(() => {
-        gameState.food += 1; // Increase gold by 1 per second
-        updateUI();
-    }, 1000); // Runs every second
+    if (gameState.farm > 0) {
+        startHelperInterval();
+    }
 }
-
-startPassiveFood();
-
-function startPassiveWood() {
-    setInterval(() => {
-        gameState.wood += 1; // Increase gold by 1 per second
-        updateUI();
-    }, 1000); // Runs every second
-}
-
-startPassiveWood();
 
 
 function exploreGold() {
@@ -246,26 +250,24 @@ function buyHelp() {
         gameState.help++;
         updateUI();
 
-        if (gameState.help === 1 && !gameState.helpInterval) {
+        if (gameState.help === 1 && !gameState.intervals.helper) {
             startHelperInterval();
         }
     }
 }
 
 function startHelperInterval(){
-    gameState.helpInterval = setInterval(() => {
+    gameState.intervals.helper = setInterval(() => {
         if (gameState.food >= gameState.help) { 
             gameState.food -= 0.01 * gameState.help;
             gameState.gold += 0.1 * gameState.help; // Increase gold
             updateUI();
         } else {
-            clearInterval(gameState.helpInterval);
-            gameState.helpInterval = null;
+            clearInterval(gameState.intervals.helper);
+            gameState.intervals.helper = null;
             resetGame(); // Call reset function
         }
-                
-                
-    }, 1000);
+    }, CONFIG.tickRate);
 }
 
 function buyFood() {
@@ -287,50 +289,77 @@ function gatherWood() {
 }
 
 function buildFarm () {
-    if (gameState.wood >= 10) {
+    if (gameState.wood >= CONFIG.farmWoodCost) {
         gameState.farm++;
-        gameState.wood -= 10;
-        updateUI();
+        gameState.wood -= CONFIG.farmWoodCost;
 
-        if (!gameState.farmInterval) {
-            gameState.farmInterval = setInterval(() => {
-                if (gameState.farm > 0) {
-                    gameState.food += gameState.farm;
-                    updateUI();
-                }
-            }, 1000);
+        if (!gameState.intervals.farm) {
+            startFarmSystem();
         }
+
+        updateUI();
+    } else {
+        alert(`Not enough wood! You need ${CONFIG.farmWoodCost} wood to build a farm.`);
     }
 }
 
+function startFarmSystem() {
+    gameState.intervals.farm = setInterval(() => {
+        if (gameState.farm > 0) {
+            gameState.food += gameState.farm * (gameState.farmer > 0 ? 1 + (0.2 * gameState.farmer) : 1);
+            updateUI();
+        }
+    }, CONFIG.tickRate);
+}
+
 function hireWorker() {
-    let workerType = document.getElementById("workerType").value;
+    const workerType = elements.workerType.value;
 
     if (gameState.help >= 1) {
         gameState.help -= 1;
         gameState[workerType] = (gameState[workerType] || 0) + 1;
         updateUI();
+
+    if (workerType === 'farmer') {
+        setupPassiveResource('food');
+    } else if (workerType === 'jack') {
+        setupPassiveResource('wood');
+        }
+    } else {
+        alert("You need to buy helpers first!");
     }
 }
 
-// Event delegation - more efficient than multiple listeners
-elements.statsContainer.addEventListener("click", function(event) {
-    const target = event.target;
-            
-    if (target.id === "exploreBtn") exploreGold();
-    else if (target.id === "upgradeBtn") upgradeChance();
-    else if (target.id === "helpBtn") buyHelp();
-    else if (target.id === "foodBtn") buyFood();
-    else if (target.id === "huntBtn") huntFood();
-    else if (target.id === "lumberBtn") gatherWood();
-    else if (target.id === "farmBtn") buildFarm();
-    else if (target.id === "hireBtn") hireWorker();
-});
+function setupEventListeners() {
+    elements.statsContainer.addEventListener("click", function(event) {
+        const target = event.target;
 
-    // Initialize UI
+        const actions = {
+            "exploreBtn": exploreGold,
+            "upgradeBtn": upgradeChance,
+            "helpBtn": buyHelp,
+            "foodBtn": buyFood,
+            "huntBtn": huntFood,
+            "lumberBtn": gatherWood,
+            "farmBtn": buildFarm,
+            "hireBtn": hireWorker,
+        };
+
+        if (target.id in actions) {
+            actions[target.id]();
+        }
+    });
+}
+
+function init () {
+    validateElements();
+    setupEventListeners();
+    initGameSystems();
     updateUI();
-})(); // IIFE to avoid global namespace pollution
+}
 
+    init();
+})(); // IIFE to avoid global namespace pollution
     </script>
 </body>
 </html>
