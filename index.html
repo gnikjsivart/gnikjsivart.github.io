@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Gold Clicker Game</title>
+    <link rel="stylesheet" href="clicker.css">
+</head>
+<body>
+    <ol>
+        <li>Create a display that shows how much gold is found when Explore is clicked</li>
+        <li>Update verbage from search to explore (or maybe gold found) for Upgrades</li>
+        <li>Add notes to the code so I better understand what I was doing when taking breaks</li>
+        <li>Modify gold finding</li>
+            <ul>
+                <li><s>Gold found is from 0 - 1</s> <br> <span>3/14/2025 => using Math.random().toFixed(1)</span></li>
+                <li><s>Small % chance to find gold</s> <br> <span>3/14/2025 => using if (Math.random() < luck)</span></li>
+            </ul>
+        <li>You have an upgrade to increase % chance to find gold (10%, 20%, 30%, ... etc)</li>
+        <li>You have an upgrade to increase amount of gold found (0 - 1, 0 - 2, 0 - 3, 0 - 4, ... 1 - 5, ... etc)</li>
+        <li><s>Add some CSS styling to the page to make it look prettier</s></li>
+            <ul>
+                <li><span>3/14/2025 => started, but want to add more</span></li>
+            </ul>
+        <li>Work on the story for the game</li>
+        <li>Add the title to the page and additional HTML information</li>
+    </ol>
+
+<div id="stats">
+    <button id="exploreBtn">Explore</button>
+    <p><span id="goldFound">0</span> Gold Found</p>
+    <button id="upgradeBtn"> Upgrade Exploring</button>
+    <p><span id="upgradeCount">0</span> Upgraded Exploring</p>
+    <button id="helpBtn">Buy Help</button>
+    <p><span id="helpCount">0</span> People to Help</p>
+    <button id="foodBtn">Buy Food</button>
+    <button id="huntBtn">Hunt for Food</button>
+    <p><span id="foodCount">0</span> Pounds of Food</p>
+    <button id="lumberBtn">Cut Wood</button>
+    <p><span id="lumberCount">0</span> Pounds of Wood</p>
+    <button id="farmBtn">Build Farm</button>
+    <p><span id="farmCount">0</span> Number of Farms</p>
+    <label for ="workerType">Hire:</label>
+    <select id="workerType">
+        <option value="farmer">Farmer</option>
+        <option value="jack">Lumber Jack</option>
+    </select>
+    <button id="hireBtn">Hire</button>
+    <p><span id="farmerCount">0</span> Farmers</p>
+    <p><span id="jackCount">0</span> Lumber Jacks</p>
+    <p>Min Life: <span id="minLifeDisplay">10</span></p>
+    <p>Max Life: <span id="maxLifeDisplay">10</span></p>
+</div>
+
+<script type="text/javascript">
+// Game initialization  with immediate function
+(function () {
+
+    const CONFIG = {
+        tickRate: 1000,
+        initialLuck: 0.5,
+        initialLife: 10,
+        farmWoodCost: 10
+    };
+
+    const COSTS = {
+        tickRate:
+        upgrade: 10,
+        helper: 10,
+        food: 1
+    };
+
+        // Game state in a single object
+    const gameState = {
+        gold: 0,
+        upgrade: 1,
+        upgradeLevel: 0,
+        luck: CONFIG.initialLuck,
+        help: 0,
+        food: 0,
+        wood: 0,
+        farmer: 0,
+        jack: 0,
+        maxLife: CONFIG.initialLife,
+        minLife: CONFIG.initialLife,
+        farm: 0,
+        
+        intervals: {
+            helper: null,
+            farm: null,
+            passive: {
+                gold: null,
+                food: null,
+                wood: null
+            }
+        }
+    };
+
+// Cache DOM elements (efficiency improvement)
+const elements = {
+    goldFound: document.getElementById("goldFound"),
+    upgradeCount: document.getElementById("upgradeCount"),
+    helpCount: document.getElementById("helpCount"),
+    foodCount: document.getElementById("foodCount"),
+    lumberCount: document.getElementById("lumberCount"),
+    farmCount: document.getElementById("farmCount"),
+    farmerCount: document.getElementById("farmerCount"),
+    jackCount: document.getElementById("jackCount"),
+    minLifeDisplay: document.getElementById("minLifeDisplay"),
+    maxLifeDisplay: document.getElementById("maxLifeDisplay"),
+    statsContainer: document.getElementById("stats")
+    workerType: document.getElementById("workerType")
+};
+
+// Validate that all DOM elements were found
+const validateElements = () => {
+    for (const [key, element] of Object.entries(elements)) {
+        if(!element) {
+            console.error('DOM element not found: ${key}');
+        }
+    }
+};
+
+function updateUI() {
+    try {
+        elements.goldFound.textContent = gameState.gold.toFixed(2);
+        elements.upgradeCount.textContent = gameState.upgradeLevel;
+        elements.helpCount.textContent = gameState.help;
+        elements.foodCount.textContent = gameState.food.toFixed(2);
+        elements.lumberCount.textContent = gameState.wood.toFixd(2);
+        elements.farmCount.textContent = gameState.farm;
+        elements.farmerCount.textContent = gameState.farmer;
+        elements.jackCount.textContent = gameState.jack;
+        elements.minLifeDisplay.textContent = gameState.minLife;
+        elements.maxLifeDisplay.textContent = gameState.maxLife;    
+    } catch (error) {
+        console.error("Error updating UI", error);
+    }
+}
+
+function clearAllIntervals () {
+    // Helper interval
+    if (gameState.intervals.helper) {
+        clearInterval(gameState.intervals.helper);
+        gameState.intervals.helper = null;
+    }
+
+    // Farm interval
+    if (gameState.intervals.farm) {
+        clearInterval(gameState.intervals.farm);
+        gameState.intervals.farm = null;
+    }
+
+    // Passive resource interval
+    Object.keys(gameState.intervals.passive).forEach(key => {
+        if (gameState.intervals.passive[key]) {
+            clearInterval(gameState.intervals.passive[key]);
+            gameState.intervals.passive[key] = null;
+        }
+    });
+}
+
+function resetGame () {
+    alert("Game Over! Restarting...");
+    clearAllIntervals();
+
+    // Reset all game state properties
+    Object.assign(gameState, {
+        gold: 0,
+        upgrade: 1,
+        upgradeLevel: 0,
+        luck: CONFIG.initialLuck,
+        help: 0,
+        food: 0,
+        wood: 0,
+        farm: 0,
+        farmer: 0,
+        jack: 0,
+        maxLife: CONFIG.initialLife,
+        minLife: CONFIG.initialLife,
+        intervals: {
+            helper: null,
+            farm: null,
+            passive: {
+                gold: null,
+                food: null,
+                wood: null,
+            }
+        }
+    });
+
+    // Restart the game systems
+    initGameSystems();
+    updateUI();
+}
+
+function startPassiveGold() {
+    setInterval(() => {
+        gameState.gold += 1; // Increase gold by 1 per second
+        updateUI();
+    }, 1000); // Runs every second
+}
+
+startPassiveGold();
+
+function startPassiveFood() {
+    setInterval(() => {
+        gameState.food += 1; // Increase gold by 1 per second
+        updateUI();
+    }, 1000); // Runs every second
+}
+
+startPassiveFood();
+
+function startPassiveWood() {
+    setInterval(() => {
+        gameState.wood += 1; // Increase gold by 1 per second
+        updateUI();
+    }, 1000); // Runs every second
+}
+
+startPassiveWood();
+
+
+function exploreGold() {
+    if (Math.random() <= gameState.luck) {
+        const increment = Math.floor(Math.random() * 10) / 10;
+        gameState.gold +=  increment * gameState.upgrade;
+    }
+    updateUI();
+}
+
+function upgradeChance() {
+    if (gameState.gold >=COSTS.upgrade) {
+        gameState.gold -= COSTS.upgrade;
+        gameState.upgrade *= 2;
+        gameState.upgradeLevel++;
+        updateUI();
+    }
+}
+
+function buyHelp() {
+    if (gameState.gold >= COSTS.helper) {
+        gameState.gold -= COSTS.helper;
+        gameState.help++;
+        updateUI();
+
+        if (gameState.help === 1 && !gameState.helpInterval) {
+            startHelperInterval();
+        }
+    }
+}
+
+function startHelperInterval(){
+    gameState.helpInterval = setInterval(() => {
+        if (gameState.food >= gameState.help) { 
+            gameState.food -= 0.01 * gameState.help;
+            gameState.gold += 0.1 * gameState.help; // Increase gold
+            updateUI();
+        } else {
+            clearInterval(gameState.helpInterval);
+            gameState.helpInterval = null;
+            resetGame(); // Call reset function
+        }
+                
+                
+    }, 1000);
+}
+
+function buyFood() {
+    if (gameState.gold >= COSTS.food) {
+        gameState.food++;
+        gameState.gold -= COSTS.food;
+        updateUI();
+    }
+}
+
+function huntFood() {
+    gameState.food++;
+    updateUI();
+    }
+
+function gatherWood() {
+    gameState.wood++;
+    updateUI();
+}
+
+function buildFarm () {
+    if (gameState.wood >= 10) {
+        gameState.farm++;
+        gameState.wood -= 10;
+        updateUI();
+
+        if (!gameState.farmInterval) {
+            gameState.farmInterval = setInterval(() => {
+                if (gameState.farm > 0) {
+                    gameState.food += gameState.farm;
+                    updateUI();
+                }
+            }, 1000);
+        }
+    }
+}
+
+function hireWorker() {
+    let workerType = document.getElementById("workerType").value;
+
+    if (gameState.help >= 1) {
+        gameState.help -= 1;
+        gameState[workerType] = (gameState[workerType] || 0) + 1;
+        updateUI();
+    }
+}
+
+// Event delegation - more efficient than multiple listeners
+elements.statsContainer.addEventListener("click", function(event) {
+    const target = event.target;
+            
+    if (target.id === "exploreBtn") exploreGold();
+    else if (target.id === "upgradeBtn") upgradeChance();
+    else if (target.id === "helpBtn") buyHelp();
+    else if (target.id === "foodBtn") buyFood();
+    else if (target.id === "huntBtn") huntFood();
+    else if (target.id === "lumberBtn") gatherWood();
+    else if (target.id === "farmBtn") buildFarm();
+    else if (target.id === "hireBtn") hireWorker();
+});
+
+    // Initialize UI
+    updateUI();
+})(); // IIFE to avoid global namespace pollution
+
+    </script>
+</body>
+</html>
